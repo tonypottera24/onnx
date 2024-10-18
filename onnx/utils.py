@@ -46,60 +46,52 @@ class Extractor:
 
     def _dfs_search_reachable_nodes(
         self,
-        node_output_name: str,
-        graph_input_names: set[str],
-        nodes: list[NodeProto],
-        reachable: set[int],
-        unreachable: set[int],
+        input_name: str,
+        output_names: list[str],
+        reachable_indexes: set[int],
+        unreachable_indexes: set[int],
     ) -> None:
-        """Helper function to find nodes which are connected to an output
+        """Helper function to find nodes which are connected to an input
 
         Arguments:
-            node_output_name (str): The name of the output
-            graph_input_names (set of string): The names of all inputs of the graph
-            nodes (list of nodes): The list of all nodes of the graph
-            reachable (set of int): The set of indexes to reachable nodes in `nodes`
-            unreachable (set of int): The set of indexes to unreachable nodes in `nodes`
+            input_name (string): The name of the input where the dfs starts
+            output_names (list of string): The names of all output nodes
+            reachable_indexes (set of int): The set of indexes to reachable nodes in `nodes`
+            unreachable_indexes (set of int): The set of indexes to unreachable nodes in `nodes`
         """
-        # Use a stack to replace the recursion
-        stack = [node_output_name]
-
+        stack = [
+            index
+            for index in unreachable_indexes
+            if input_name in self.graph.node[index].input
+        ]
         while stack:
-            current_output_name = stack.pop()
-
-            # finish search at inputs
-            if current_output_name in graph_input_names:
+            current_index = stack.pop()
+            reachable_indexes.add(current_index)
+            unreachable_indexes.remove(current_index)
+            # skip if current_node outputs include output_names
+            if set(self.graph.node[current_index].output) & set(output_names):
                 continue
-
-            # find nodes connected to this output
-            nodes_to_search = [
+            # find unreachable nodes which is connected to current_node
+            stack.extend(
                 index
-                for index in unreachable
-                if current_output_name in nodes[index].output
-            ]
-
-            # add nodes connected to this output to sets
-            for node_index in nodes_to_search:
-                reachable.add(node_index)
-                unreachable.remove(node_index)
-                stack += nodes[node_index].input
+                for index in unreachable_indexes
+                if set(self.graph.node[index].input)
+                & set(self.graph.node[current_index].output)
+            )
 
     def _collect_reachable_nodes(
         self,
         input_names: list[str],
         output_names: list[str],
     ) -> list[NodeProto]:
-        _input_names = set(input_names)
-        nodes = list(self.graph.node)
-        reachable: set[int] = set()
-        unreachable: set[int] = set(range(len(nodes)))
-        for name in output_names:
+        reachable_indexes: set[int] = set()
+        unreachable_indexes: set[int] = set(range(len(self.graph.node)))
+        for input_name in input_names:
             self._dfs_search_reachable_nodes(
-                name, _input_names, nodes, reachable, unreachable
+                input_name, output_names, reachable_indexes, unreachable_indexes
             )
         # needs to be topologically sorted
-        nodes = [nodes[node_index] for node_index in sorted(reachable)]
-        return nodes
+        return [self.graph.node[index] for index in sorted(reachable_indexes)]
 
     def _collect_referred_local_functions(
         self,
